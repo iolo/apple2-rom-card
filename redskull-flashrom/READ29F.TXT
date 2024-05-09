@@ -1,0 +1,210 @@
+
+Flash ROM programmer / Flash ROM drive project for the Apple ][,//e
+
+Original design and software by RedSkull@digital-corruption.net
+
+Notes for the 29Fxxx version of the hardware/software.
+
+1. Introduction.
+
+Refer to the accompanying notes/pics for construction info.
+
+The included disk images contain the complete source code for
+the 29Fxxx version of my Apple ][ FlashRom card.
+
+Currently Dos3.3 is supported, however I am working on PRODOS
+support to be released in the not too distant future.
+
+Source code is also included to Erase the contents of the
+FlashRom, or to Reset the FlashRom to read mode.
+
+The algorithms follow the AMD flash programming guidelines.
+I have only used AMD chips, although the INTEL and ATMEL 
+flash roms use the same algorith to the best of my knowledge.
+
+You will need some way of converting the included disk images
+back to physical disks on your Apple. Software is on the net
+for PC and MAC users to do this. I happen to use an AMIGA 
+for the majority of my programming tasks, so I had to write
+my own software for the task. I have uploaded it to AMINET
+and ASIMOV in case there are any other miggy users.
+
+2. Theory of Operation.
+
+READ MODE.
+
+The Flash ROM appears to the Apple ][ system as a number of
+256 byte blocks that appear at $CN00-$CNFF, where N is the
+slot number the card is plugged into. The fact that the
+blocks happen to be sector sized simplifies DOS interfacing.
+
+Several registers in the cards I/O space are also used.
+(C0N0 space, where N = slot + 8. ie. C0A0-C0AF = slot2 space).
+
+A reference to C0N0 will set the /OE pin on the flash ROM
+low, enabling the FlashROM in the CN00-CNFF space. A
+reference to C0N1 will set /OE high, disabling the chip
+for reading. /OE is set high during programming functions.
+
+If you are using larger FlashRoms then you will have A16,A17
+etc. connected.
+These addresses are used to set the state of these pins:
+
+C0N2 = A16 low
+C0N3 = A16 high
+C0N4 = A17 low
+C0N5 = A17 high
+etc.
+
+A write into the C0Nx space will set the Address lines
+A8-A15 on the Flash chip.
+
+For example : (assume a 29F010 card in slot 2)
+
+	LDA $C0A2	; set A16 low on FlashROM.
+	LDA #$04
+	STA $C0A0	; set high order address lines to 04
+			; plus set /OE low for read.
+
+Addresses $00400 - $004FF in the FlashROM now appear at
+$C200-$C2FF in the Apple ][ address space.
+
+After power-on, or after a RESET block 00 automatically
+appears in the $CNXX space.
+This occurs because the /RESET signal is applied to the 74LS259
+and 74LS273 reset inputs, consequently /OE and any of the
+high address lines (A16 and up) are set low. Also A8-A15
+are set to 0 by the reset on the LS273.
+
+By simulating the ROM from a Disk ][ card in Bank 00 this
+ensures that the system will always see the card as a bootable
+disk drive card on power-up or Reset.
+
+WRITE MODE
+
+This is fairly easy.
+
+The Flash roms need a special sequence of bytes written
+into particular address locations to initiate the various
+operations, such as write a byte, erase the chip, etc.
+
+Refer to AMD's web site for PDF files that describe the 
+programming algorithms, plus study the included source
+code to see how the various algorithms are implemented with
+this design.
+
+3. DOS 3.3 routines.
+
+How does the card appear to DOS 3.3?
+------------------------------------
+
+Using a card with a 29F010 will allow you to simulate a
+32 track disk drive.
+
+I have included source for routines that patch the RWTS
+routines in DOS3.3 so that any reference to slot 5
+(regardless of what physical slot the card is in) to
+access the Flash ROM card.
+
+The pronto DOS on the disk images are patched to see a
+flashROM card in physical slot 2, virtual slot 5.
+The patch lies where the normal RWTS INIT routine sits.
+
+Consequently this DOS will no longer do the LOW-LEVEL
+formatting to a disk. It will still INIT a diskette
+that has been previously formatted however.
+
+Trying to write a file to the FlashROM will normally
+give a write protect error. (RWTS WP)
+
+There is a special version of the RWTS patch that is
+used when you want to program the card. (RWTS WRITE)
+
+for example, once DOS 3.3 is booted, type CATALOG S5<RET>
+to get a catalog of the image on the FlashRom card.
+
+Should you wish to use the card in another physical slot,
+just reassemble the source with different slot equates.
+
+How do I write a disk image to the card?
+----------------------------------------
+
+Firstly make sure the card is blank using the ERASEROM
+program.
+
+write the FLASHDISK image file to a physical disk.
+
+This image WILL NOT boot on a disk][ drive as it has the
+special flashrom boot sector. The FLASHSOURCE disk WILL
+boot on a disk][ drive but has had it's RWTS routine
+patched so that references to SLOT 5 will access the
+flash rom card.
+
+The FLASHDISK image has had it's VTOC patched to only
+see 32 tracks.
+
+Copy whatever files you would like to the disk.
+
+Boot the FLASHSOURCE disk to get a modified DOS into
+memory.
+
+BLOAD the "RWTS WRITE" file into memory. This will allow
+writing to the card by DOS3.3
+
+Then run the version of COPYA on the enclosed image.
+It has been patched to only copy 32 tracks, and to bypass
+the normal disk formatting routine.
+
+Specify the FLASHDISK disk as your source and SLOT 5 as
+your destination.
+
+The FLASHDISK image should be written to the flashrom card.
+
+Hit <CTRL>-<RESET> followed by a PR#2
+(or whatever slot you have re-assembled the routines
+for) will now boot the DOS 3.3 from the flashcard. Slot 5
+will be the default virtual slot.
+
+How does the card boot?
+-----------------------
+
+Because of the way the card is organised (previously described)
+whenever the system is powered on or reset, Block 00 in the
+flashrom appears at C200-C2FF (on my system for example).
+
+Several bytes signify to the autostart ROM that this is a
+disk ][ controller ROM. Refer to apple technotes for more info
+on this topic.
+
+Normally the disk controller rom loads in Track00 Sector00
+to $0800-$08FF then jumps to $0801 to continue booting.
+
+The code at $0801 then loads in the rest of the DOS 3.3
+RWTS routine using section of the controller rom then
+jumps to $B700 to continue loading the rest of DOS.
+
+On the flashrom card Block 00 is both the disk controller
+rom AND Track00 Sector00 of the DOS image.
+
+The special boot code copies itself to $0800-$08FF then
+jumps to the relocated copy. This is because it cannot
+load the rest of DOS into the same space it is executing
+from. The code at $0800 then loads the rest of RWTS 
+just like a normal disk, sets the default slot as 5 so
+that DOS will use our modified RWTS routines for the rest
+of the boot, then it jumps to $B700 and continues as
+would a normal DISK][.
+
+To boot the card from BASIC just hit <CTRL>-<RESET>
+to make sure block 00 (our phony bootrom) is visible
+then PR#N to the relevant slot.
+
+
+4. Summing up.
+
+A certain knowledge of Hardware construction and also of
+6502 assembly language is assumed in this project.
+
+If you don't feel up to constructing it, DON'T!!
+
+RedSkull@digital-corruption.net
